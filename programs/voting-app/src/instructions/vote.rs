@@ -30,7 +30,7 @@ impl<'info> Vote<'info> {
     pub fn vote(&mut self, _poll_id: u64, _candidate_name: String) -> Result<()> {
         let current_time = Clock::get()?.unix_timestamp;
 
-        if current_time > self.poll_account.poll_voting_end as i64 {
+        if current_time >= self.poll_account.poll_voting_end as i64 {
             return Err(ErrorVote::DonePoll.into());
         } else if current_time < self.poll_account.poll_voting_start as i64 {
             return Err(ErrorVote::UnstaredPoll.into());

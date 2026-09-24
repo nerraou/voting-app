@@ -1,3 +1,5 @@
+use std::result;
+
 use anchor_lang::solana_program::pubkey::Pubkey;
 use {
     anchor_lang::{
@@ -288,4 +290,99 @@ fn test_vote() {
 
     assert_eq!(candidate.candidate_name, "Noha");
     assert_eq!(candidate.candidate_votes, 1);
+}
+
+#[test]
+fn test_vote_end_fails() {
+    let (mut svm, payer) = setup();
+
+    let poll_id: u64 = 1;
+    let candidate_name = "Noha".to_string();
+
+    let user = payer.pubkey();
+    let (poll_pda, _) = Pubkey::find_program_address(
+        &[voting_app::constants::POLL_SEED, &poll_id.to_le_bytes()],
+        &voting_app::id(),
+    );
+
+    let (candidate_pda, _) = Pubkey::find_program_address(
+        &[candidate_name.as_bytes(), &poll_id.to_le_bytes()],
+        &voting_app::id(),
+    );
+
+    let init_ix = Instruction {
+        program_id: voting_app::id(),
+        accounts: voting_app::accounts::InitializePoll {
+            signer: user,
+            poll_account: poll_pda,
+            system_program: SYSTEM_PROGRAM_ID,
+        }
+        .to_account_metas(None),
+        data: voting_app::instruction::InitializePoll {
+            poll_description: String::from("Test Poll init"),
+            poll_id: 1,
+            poll_name: String::from("POLL TEST"),
+            poll_start: 0,
+            poll_end: 0,
+        }
+        .data(),
+    };
+
+    let message = Message::new(&[init_ix.clone()], Some(&payer.pubkey()));
+    let recent_blockhash = svm.latest_blockhash();
+    let transaction = Transaction::new(&[&payer], message, recent_blockhash);
+
+    svm.send_transaction(transaction)
+        .expect("Initialize poll transaction failed");
+
+    let init_candidate_ix = Instruction {
+        program_id: voting_app::id(),
+        accounts: voting_app::accounts::InitializeCandidate {
+            signer: user,
+            poll_account: poll_pda,
+            candidate_account: candidate_pda,
+            system_program: SYSTEM_PROGRAM_ID,
+        }
+        .to_account_metas(None),
+        data: voting_app::instruction::InitializeCandidate {
+            candidate_name: candidate_name.clone(),
+            poll_id: poll_id,
+        }
+        .data(),
+    };
+
+    let message = Message::new(&[init_candidate_ix.clone()], Some(&payer.pubkey()));
+    let recent_blockhash = svm.latest_blockhash();
+    let transaction = Transaction::new(&[&payer], message, recent_blockhash);
+
+    svm.send_transaction(transaction)
+        .expect("Initialize candidate transaction failed");
+
+    let vote_ix = Instruction {
+        program_id: voting_app::id(),
+
+        accounts: voting_app::accounts::Vote {
+            signer: user,
+            poll_account: poll_pda,
+            candidate_account: candidate_pda,
+        }
+        .to_account_metas(None),
+        data: voting_app::instruction::Vote {
+            candidate_name: candidate_name,
+            poll_id: poll_id,
+        }
+        .data(),
+    };
+
+    let message = Message::new(&[vote_ix.clone()], Some(&payer.pubkey()));
+    let recent_blockhash = svm.latest_blockhash();
+    let transaction = Transaction::new(&[&payer], message, recent_blockhash);
+
+    let result = svm.send_transaction(transaction);
+
+    println!("Transaction result: {result:#?}");
+    assert!(
+        result.is_err(),
+        "Transaction should fail because the poll has ended"
+    );
 }
